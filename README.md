@@ -1,2 +1,3 @@
 # GBEmu
-Python gameboy emulator
+Python gameboy emulator.
+Only instructions are completely implemented (may have bugs)
