@@ -1,6 +1,7 @@
 import collections
 
-from . import MMU, registers
+from . import registers
+from .MMU import MMU
 
 
 class Flags:
@@ -36,7 +37,7 @@ class Z80(object):
         self._stop = False
 
         # Memory Unit
-        self._mem = MMU.MMU()
+        self._mem = MMU()
 
         # OPCodes Map
         self._opmap = []
@@ -129,27 +130,28 @@ class Z80(object):
         return value
 
     def __RLC(self, value):
-        out = (value & 0x8) == 0x8
+        out = (value & 0x80) == 0x80  # Check bit 7 for carry
 
         self._AF.low = 0
         value <<= 1
 
         if out:
             self.__SetFlag(Flags.CARRY)
-            value |= 0x10
+            value |= 0x01  # Set bit 0 with old bit 7 (circular rotation)
 
         if value == 0:
             self.__SetFlag(Flags.ZERO)
 
-        return value
+        return value & 0xFF  # Mask to 8 bits
 
     def __RR(self, value):
         out = (value & 0x1) == 0x1
+        carry_in = self.__IsFlagSet(Flags.CARRY)
 
         self._AF.low = 0
         value >>= 1
 
-        if self.__IsFlagSet(Flags.CARRY):
+        if carry_in:
             value |= 0x80
         if out:
             self.__SetFlag(Flags.CARRY)
@@ -350,12 +352,12 @@ class Z80(object):
         self._m = 1
 
     def OPCode_78(self):
-        # LD A,B
-        self._AF.high = self._BC.high
+        """LD A,B - Copy B to A. Cycles: 1. Flags: None affected."""
+        self._AF.high = self._BC.high  # A = B
         self._m = 1
 
     def OPCode_79(self):
-        # LD A,C
+        """LD A,C - Copy C to A. Cycles: 1. Flags: None affected."""
         self._AF.high = self._BC.low
         self._m = 1
 
@@ -1528,8 +1530,8 @@ class Z80(object):
         # SWAP [HL]
         value = self._mem.rb(self._HL.value)
         value = self.__SWAP8(value)
-        self._mem.wb(value)
-        self._m = 2
+        self._mem.wb(self._HL.value, value)
+        self._m = 4  # Memory operations take 4 cycles per reference
 
     def OPCode_27(self):
         # DAA
@@ -1543,7 +1545,7 @@ class Z80(object):
         else:
             if self.__IsFlagSet(Flags.HALF_CARRY):
                 a = (a - 0x6) & 0xFF
-            if self.__IsFLagSet(Flags.CARRY):
+            if self.__IsFlagSet(Flags.CARRY):
                 a -= 0x60
 
         self.__ResetFlag(Flags.HALF_CARRY)
@@ -1577,10 +1579,10 @@ class Z80(object):
         # SCF
         self.__ResetFlag(Flags.SUB)
         self.__ResetFlag(Flags.HALF_CARRY)
-        self._SetFlag(Flags.CARRY)
+        self.__SetFlag(Flags.CARRY)
         self._m = 1
 
-    def OPCode_78(self):
+    def OPCode_76(self):
         # HALT
         self._halt = True
         self._m = 1
@@ -1780,13 +1782,13 @@ class Z80(object):
 
     def OPCode_CB1D(self):
         # RR L
-        self._HL.low = self.__RR(self_HL.low)
+        self._HL.low = self.__RR(self._HL.low)
         self._m = 2
 
     def OPCode_CB1E(self):
         # RR [HL]
         value = self._mem.rb(self._HL.value)
-        value = self__RR(value)
+        value = self.__RR(value)
         self._mem.wb(self._HL.value, value)
         self._m = 4
 
@@ -2247,47 +2249,47 @@ class Z80(object):
 
     def OPCode_CBC7(self):
         # SET 0,A
-        self._AF.high = elf.__SET(self._AF.high, 0)
+        self._AF.high = self.__SET(self._AF.high, 0)
         self._m = 2
 
     def OPCode_CBCF(self):
         # SET 1,A
-        self._AF.high = elf.__SET(self._AF.high, 1)
+        self._AF.high = self.__SET(self._AF.high, 1)
         self._m = 2
 
     def OPCode_CBD7(self):
         # SET 2,A
-        self._AF.high = elf.__SET(self._AF.high, 2)
+        self._AF.high = self.__SET(self._AF.high, 2)
         self._m = 2
 
     def OPCode_CBDF(self):
         # SET 3,A
-        self._AF.high = elf.__SET(self._AF.high, 3)
+        self._AF.high = self.__SET(self._AF.high, 3)
         self._m = 2
 
     def OPCode_CBE7(self):
         # SET 4,A
-        self._AF.high = elf.__SET(self._AF.high, 4)
+        self._AF.high = self.__SET(self._AF.high, 4)
         self._m = 2
 
     def OPCode_CBEF(self):
         # SET 5,A
-        self._AF.high = elf.__SET(self._AF.high, 5)
+        self._AF.high = self.__SET(self._AF.high, 5)
         self._m = 2
 
     def OPCode_CBF7(self):
         # SET 6,A
-        self._AF.high = elf.__SET(self._AF.high, 6)
+        self._AF.high = self.__SET(self._AF.high, 6)
         self._m = 2
 
     def OPCode_CBFF(self):
         # SET 7,A
-        self._AF.high = elf.__SET(self._AF.high, 7)
+        self._AF.high = self.__SET(self._AF.high, 7)
         self._m = 2
 
     def OPCode_CBC0(self):
         # SET 0,B
-        self._AF.high = self.__SET(self._BC.high, 0)
+        self._BC.high = self.__SET(self._BC.high, 0)
         self._m = 2
 
     def OPCode_CBC8(self):
@@ -2407,42 +2409,42 @@ class Z80(object):
 
     def OPCode_CBC3(self):
         # SET 0,E
-        self._DE.low = self._SET(self._DE.low, 0)
+        self._DE.low = self.__SET(self._DE.low, 0)
         self._m = 2
 
     def OPCode_CBCB(self):
         # SET 1,E
-        self._DE.low = self._SET(self._DE.low, 1)
+        self._DE.low = self.__SET(self._DE.low, 1)
         self._m = 2
 
     def OPCode_CBD3(self):
         # SET 2,E
-        self._DE.low = self._SET(self._DE.low, 2)
+        self._DE.low = self.__SET(self._DE.low, 2)
         self._m = 2
 
     def OPCode_CBDB(self):
         # SET 3,E
-        self._DE.low = self._SET(self._DE.low, 3)
+        self._DE.low = self.__SET(self._DE.low, 3)
         self._m = 2
 
     def OPCode_CBE3(self):
         # SET 4,E
-        self._DE.low = self._SET(self._DE.low, 4)
+        self._DE.low = self.__SET(self._DE.low, 4)
         self._m = 2
 
     def OPCode_CBEB(self):
         # SET 5,E
-        self._DE.low = self._SET(self._DE.low, 5)
+        self._DE.low = self.__SET(self._DE.low, 5)
         self._m = 2
 
     def OPCode_CBF3(self):
         # SET 6,E
-        self._DE.low = self._SET(self._DE.low, 6)
+        self._DE.low = self.__SET(self._DE.low, 6)
         self._m = 2
 
     def OPCode_CBFB(self):
         # SET 7,E
-        self._DE.low = self._SET(self._DE.low, 7)
+        self._DE.low = self.__SET(self._DE.low, 7)
         self._m = 2
 
     def OPCode_CBC4(self):
@@ -2583,47 +2585,47 @@ class Z80(object):
 
     def OPCode_CB87(self):
         # RES 0,A
-        self._AF.high = elf.__RES(self._AF.high, 0)
+        self._AF.high = self.__RES(self._AF.high, 0)
         self._m = 2
 
     def OPCode_CB8F(self):
         # RES 1,A
-        self._AF.high = elf.__RES(self._AF.high, 1)
+        self._AF.high = self.__RES(self._AF.high, 1)
         self._m = 2
 
     def OPCode_CB97(self):
         # RES 2,A
-        self._AF.high = elf.__RES(self._AF.high, 2)
+        self._AF.high = self.__RES(self._AF.high, 2)
         self._m = 2
 
     def OPCode_CB9F(self):
         # RES 3,A
-        self._AF.high = elf.__RES(self._AF.high, 3)
+        self._AF.high = self.__RES(self._AF.high, 3)
         self._m = 2
 
     def OPCode_CBA7(self):
         # RES 4,A
-        self._AF.high = elf.__RES(self._AF.high, 4)
+        self._AF.high = self.__RES(self._AF.high, 4)
         self._m = 2
 
     def OPCode_CBAF(self):
         # RES 5,A
-        self._AF.high = elf.__RES(self._AF.high, 5)
+        self._AF.high = self.__RES(self._AF.high, 5)
         self._m = 2
 
     def OPCode_CBB7(self):
         # RES 6,A
-        self._AF.high = elf.__RES(self._AF.high, 6)
+        self._AF.high = self.__RES(self._AF.high, 6)
         self._m = 2
 
     def OPCode_CBBF(self):
         # RES 7,A
-        self._AF.high = elf.__RES(self._AF.high, 7)
+        self._AF.high = self.__RES(self._AF.high, 7)
         self._m = 2
 
     def OPCode_CB80(self):
         # RES 0,B
-        self._AF.high = self.__RES(self._BC.high, 0)
+        self._BC.high = self.__RES(self._BC.high, 0)
         self._m = 2
 
     def OPCode_CB88(self):
@@ -2743,42 +2745,42 @@ class Z80(object):
 
     def OPCode_CB83(self):
         # RES 0,E
-        self._DE.low = self._RES(self._DE.low, 0)
+        self._DE.low = self.__RES(self._DE.low, 0)
         self._m = 2
 
     def OPCode_CB8B(self):
         # RES 1,E
-        self._DE.low = self._RES(self._DE.low, 1)
+        self._DE.low = self.__RES(self._DE.low, 1)
         self._m = 2
 
     def OPCode_CB93(self):
         # RES 2,E
-        self._DE.low = self._RES(self._DE.low, 2)
+        self._DE.low = self.__RES(self._DE.low, 2)
         self._m = 2
 
     def OPCode_CB9B(self):
         # RES 3,E
-        self._DE.low = self._RES(self._DE.low, 3)
+        self._DE.low = self.__RES(self._DE.low, 3)
         self._m = 2
 
     def OPCode_CBA3(self):
         # RES 4,E
-        self._DE.low = self._RES(self._DE.low, 4)
+        self._DE.low = self.__RES(self._DE.low, 4)
         self._m = 2
 
     def OPCode_CBAB(self):
         # RES 5,E
-        self._DE.low = self._RES(self._DE.low, 5)
+        self._DE.low = self.__RES(self._DE.low, 5)
         self._m = 2
 
     def OPCode_CBB3(self):
         # RES 6,E
-        self._DE.low = self._RES(self._DE.low, 6)
+        self._DE.low = self.__RES(self._DE.low, 6)
         self._m = 2
 
     def OPCode_CBBB(self):
         # RES 7,E
-        self._DE.low = self._RES(self._DE.low, 7)
+        self._DE.low = self.__RES(self._DE.low, 7)
         self._m = 2
 
     def OPCode_CB84(self):
