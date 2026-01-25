@@ -1,4 +1,4 @@
-from GBEmu import GBEmu
+from src.gbemu import GBEmu
 
 a = GBEmu()
 a.start()

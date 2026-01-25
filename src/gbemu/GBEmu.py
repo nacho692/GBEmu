@@ -1,6 +1,5 @@
-import Z80
-import MMU
-import GPU
+from . import GPU, MMU, Z80
+
 
 class GBEmu:
     def __init__(self):
@@ -12,9 +11,9 @@ class GBEmu:
         self._mmu.setOAM(self._gpu.OAM)
 
         self._cpu.MMU = self._mmu
-        
-    def loadROM(self,name):
-        file_ob = open(name,"rb")
+
+    def loadROM(self, name):
+        file_ob = open(name, "rb")
         try:
             byte = file_ob.read(1)
             rom = []
@@ -28,8 +27,7 @@ class GBEmu:
 
     def start(self):
         i = 0
-        while(True):    
+        while True:
             self._cpu.cycle()
             self._gpu.step(self._cpu._m)
             i += 1
-
