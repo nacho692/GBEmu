@@ -3,7 +3,7 @@ name = "gbemu"
 version = "0.1.0"
 description = "Python Game Boy emulator with Z80 CPU implementation"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "pygame>=2.0.0",
 ]
@@ -32,5 +32,6 @@ dev = [
     "black>=24.8.0",
     "isort>=5.13.2",
     "pytest>=8.3.5",
+    "pytest-cov>=6.0.0",
 ]
 

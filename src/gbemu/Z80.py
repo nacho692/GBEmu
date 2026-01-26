@@ -107,6 +107,10 @@ class Z80(object):
     def __IsFlagSet(self, flag):
         return (self._AF.low & flag) == flag
 
+    def IsFlagSet(self, flag):
+        """Public method to check if a flag is set"""
+        return self.__IsFlagSet(flag)
+
     def printFlags(self):
         print("{0:08b}".format(self._AF.low))
 
@@ -116,17 +120,20 @@ class Z80(object):
 
     def __RL(self, value):
         out = (value & 0x80) == 0x80
+        carry_in = self.__IsFlagSet(Flags.CARRY)
 
-        self._AF.low = 0
+        self._AF.low = 0  # Clear all flags first
         value <<= 1
 
-        if self.__IsFlagSet(Flags.CARRY):
+        if carry_in:
             value |= 0x1
         if out:
             self.__SetFlag(Flags.CARRY)
 
+        value &= 0xFF  # Mask to 8 bits
         if value == 0:
             self.__SetFlag(Flags.ZERO)
+
         return value
 
     def __RLC(self, value):
@@ -260,7 +267,7 @@ class Z80(object):
         self._AF.low = 0
         if value > 0x7F:
             self.__SetFlag(Flags.CARRY)
-        value <<= 1
+        value = (value << 1) & 0xFF
         if value == 0:
             self.__SetFlag(Flags.ZERO)
         return value
@@ -270,7 +277,7 @@ class Z80(object):
         if value & 0x1:
             self.__SetFlag(Flags.CARRY)
         value |= (value >> 7) << 8
-        value >>= 1
+        value = (value >> 1) & 0xFF
         if value == 0:
             self.__SetFlag(Flags.ZERO)
 
@@ -381,11 +388,6 @@ class Z80(object):
         self._AF.high = self._HL.low
         self._m = 1
 
-    def OPCode_7E(self):
-        # LD A,[HL]
-        self._AF.high = self._mem.rb(self._HL.value)
-        self._m = 2
-
     def OPCode_40(self):
         # LD B,B
         self._m = 1
@@ -446,7 +448,7 @@ class Z80(object):
 
     def OPCode_4D(self):
         # LD C,L
-        self._BC.low = self._HL.high
+        self._BC.low = self._HL.low
         self._m = 1
 
     def OPCode_4E(self):
@@ -647,8 +649,8 @@ class Z80(object):
 
     def OPCode_FA(self):
         # LD A,[nn]
-        addr = self._mem.rb(self._PC.value)
-        self._PC.value += 1
+        addr = self._mem.rw(self._PC.value)
+        self._PC.value += 2
         self._AF.high = self._mem.rb(addr)
         self._m = 4
 
@@ -706,8 +708,8 @@ class Z80(object):
 
     def OPCode_EA(self):
         # LD [nn],A
-        addr = self._mem.rb(self._PC.value)
-        self._PC.value += 1
+        addr = self._mem.rw(self._PC.value)
+        self._PC.value += 2
         self._mem.wb(addr, self._AF.high)
         self._m = 4
 
@@ -909,7 +911,7 @@ class Z80(object):
         # ADD A,[HL]
         value = self._mem.rb(self._HL.value)
         self._AF.high = self.__ADD8(self._AF.high, value)
-        self_m = 2
+        self._m = 2
 
     def OPCode_C6(self):
         # ADD A,n
@@ -1444,6 +1446,8 @@ class Z80(object):
                 self.__SetFlag(Flags.HALF_CARRY)
 
         self.__ResetFlag(Flags.ZERO)
+        self._SP.value = result & 0xFFFF
+        self._m = 4
 
     def OPCode_03(self):
         # INC BC
@@ -1535,7 +1539,7 @@ class Z80(object):
 
     def OPCode_27(self):
         # DAA
-        a = self._AF.value
+        a = self._AF.high
         if not (self.__IsFlagSet(Flags.SUB)):
             if self.__IsFlagSet(Flags.HALF_CARRY) or ((a & 0xF) > 0x9):
                 a += 0x06
@@ -1587,10 +1591,18 @@ class Z80(object):
         self._halt = True
         self._m = 1
 
-    def OPCode_1000(self):
-        # STOP
-        self._stop = True
-        self._m = 1
+    def OPCode_10(self):
+        # STOP - should be followed by 0x00
+        next_byte = self._mem.rb(self._PC.value)
+        if next_byte == 0x00:
+            self._PC.value += (
+                2  # consume both bytes (framework won't add extra since PC changed)
+            )
+            self._stop = True
+            self._m = 4  # STOP takes 4 cycles according to docs
+        else:
+            # Invalid STOP instruction - treat as NOP
+            self._m = 1
 
     # TODO: Interruptions should stop after next instruction
     def OPCode_F3(self):
@@ -1607,21 +1619,25 @@ class Z80(object):
     def OPCode_17(self):
         # RLA
         self._AF.high = self.__RL(self._AF.high)
+        self.__ResetFlag(Flags.ZERO)
         self._m = 1
 
     def OPCode_07(self):
         # RLCA
         self._AF.high = self.__RLC(self._AF.high)
+        self.__ResetFlag(Flags.ZERO)
         self._m = 1
 
     def OPCode_1F(self):
         # RRA
         self._AF.high = self.__RR(self._AF.high)
+        self.__ResetFlag(Flags.ZERO)
         self._m = 1
 
     def OPCode_0F(self):
         # RRCA
         self._AF.high = self.__RRC(self._AF.high)
+        self.__ResetFlag(Flags.ZERO)
         self._m = 1
 
     def OPCode_CB07(self):
@@ -1856,7 +1872,7 @@ class Z80(object):
 
     def OPCode_CB2B(self):
         # SRA E
-        self._DE.high = self.__SRA(self._DE.high)
+        self._DE.low = self.__SRA(self._DE.low)
         self._m = 2
 
     def OPCode_CB2C(self):
