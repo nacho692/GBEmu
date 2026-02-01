@@ -238,7 +238,7 @@ class MMU(object):
             0xB9,
             0xA5,
             0x42,
-            0x4C,
+            0x3C,
             0x21,
             0x04,
             0x01,
@@ -335,8 +335,8 @@ class MMU(object):
         self._wrambn = wram
 
     def loadROM(self, rom):
-        self.setROM0(rom[0:16383])
-        self.setROMB(rom[16384:32767])
+        self.setROM0(rom[:0x4000])
+        self.setROMB(rom[0x4000:0x8000])
 
     # Read 8bits
     def rb(self, addr):
@@ -425,13 +425,15 @@ class MMU(object):
 
         # OAM
         if 0xFE00 <= addr <= 0xFE9F:
-            return self._oam[addr ^ 0xFE00]
+            self._oam[addr ^ 0xFE00] = data
+            return
 
         # IO
         if 0xFF00 <= addr <= 0xFF7F:
             self._io[addr ^ 0xFF00] = data
             if 0xFF40 <= addr <= 0xFF47:
                 self._gpu.wb(addr, data)
+            return
 
         # HRAM
         if 0xFF80 <= addr <= 0xFFFE:

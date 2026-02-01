@@ -1,3 +1,7 @@
+import sys
+
+import pygame
+
 from . import GPU, MMU, Z80
 
 
@@ -12,22 +16,17 @@ class GBEmu:
 
         self._cpu.MMU = self._mmu
 
-    def loadROM(self, name):
-        file_ob = open(name, "rb")
-        try:
-            byte = file_ob.read(1)
-            rom = []
-            while not byte == "":
-                rom.append(ord(byte))
-                byte = file_ob.read(1)
-        finally:
-            file_ob.close()
-
+    def loadROM(self, path):
+        with open(path, "rb") as f:
+            rom = list(f.read())
         self._mmu.loadROM(rom)
 
     def start(self):
-        i = 0
         while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
             self._cpu.cycle()
             self._gpu.step(self._cpu._m)
-            i += 1
